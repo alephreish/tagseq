@@ -6,6 +6,8 @@ Included in this project are tools for Tag-Seq index design and data processing.
 process_tags.pl
 ---------------
 
+A tools for demultiplexing Tag-Seq reads tagged with mDBRs.
+
 Use as: `process_tags.pl [arguments] <reads.fq(.gz)> <specimens.txt>`
 
 Input files:
@@ -43,7 +45,7 @@ Arguments:
 
 Example:
 
-    > perl mdbr.pl 6 3 RY
+    $ perl mdbr.pl 6 3 RY
     Searching for all maximum weight cliques...
     RRYRYY RRYYRR RYRRRR RYRYYY YRRRRY YRRYYR YYYRYR YYYYRY
     RRYRYY RRYYRR RYRRRR RYRYYY YRRRYR YRRYRY YYYRRY YYYYYR
@@ -53,21 +55,28 @@ Example:
 polya\_trim.pl
 --------------
 
-A script to trim reads to get rid of: polyA tails, occasional polyG artifacts (NextSeq-specific), 5' adaptor overhangs, reads with low-quality indices
+A simple script to trim reads to get rid of: polyA tails, occasional polyG artifacts (NextSeq-specific), 5' adaptor overhangs, reads with low-quality indices. For advanced trimming options it is recommended to use [cutadapt](http://cutadapt.readthedocs.org/).
 
-Use as: `perl polya_trim.pl [min length] [trim polyA] [trim polyG] [trim N bases from 5'] [trim indices] < [input fastq] > [output fastq]`
+Use as:
+
+    polya_trim.pl [arguments] < input.fq > output.fq
+
+or
+
+    gzip -cd input.fq.gz | polya_trim.pl [arguments] | gzip > output.fq.fq
+
 
 Arguments:
 
-* `min length` (integer number): minimum read length before or after trimming, any read shorter than this number is discarded
-* `trim polyA` (0 or 1): flag indicating whether to trim polyA tails
-* `trim polyG` (0 or 1): flag indicating whether to trim ``polyG'' tails
-* `trim N bases from 5'` (integer number): trim this number of bases from the 5'-end
-* `trim indices` (0 or 1): flag, whether to remove reads with indices composed of polyN or the `AGATCTCG` ``slipping'' sequence
+* `L`: minimum read Length before or after trimming [default: 77]
+* `A`: trim polyA-tails of at least this length     [1]
+* `G`: trim polyG-tails of at least this length     [1]
+* `5`: trim this Number of bases from 5' end        [0]
+* `I`: discard reads with polyN and 'slipped' indexes (flag)
 
 Example:
 
-	>gzip -cd myReads.fq.gz | perl polya_trim.pl 75 1 0 2 1 | gzip -c > myTrimmedReads.fq.gz
+	$ gzip -cd myReads.fq.gz | perl polya_trim.pl -L 75 -A 10 -G 0 -5 2 -I | gzip -c > myTrimmedReads.fq.gz
 
 Citation
 --------

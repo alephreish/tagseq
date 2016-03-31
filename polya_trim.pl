@@ -17,6 +17,36 @@
 
 use strict;
 use warnings;
+use Getopt::Std;
+$Getopt::Std::STANDARD_HELP_VERSION = 1;
+
+my $version = "polya_trim.pl v. 0.2\n";
+my $help    = "Use as:
+polya_trim.pl [arguments] < input.fq > output.fq
+or
+gzip -cd input.fq.gz | polya_trim.pl [arguments] | gzip > output.fq.fq
+
+  Arguments:
+    -L : minimum read Length before or after trimming [default: 77]
+    -A : trim polyA-tails of at least this length     [1]
+    -G : trim polyG-tails of at least this length     [1]
+    -5 : trim this Number of bases from 5' end        [0]
+    -I : discard reads with polyN and 'slipped' indexes (flag)
+";
+
+our($opt_L, $opt_A, $opt_G, $opt_5, $opt_I, $opt_h, $opt_v);
+die $help    if !getopts('L:A:G:5:Ihv') || $opt_h;
+die $version if $opt_v;
+
+sub VERSION_MESSAGE {
+	my ($fp) = @_;
+	print { $fp } $version;
+}
+
+sub HELP_MESSAGE {
+	my ($fp) = @_;
+	print { $fp } $help;
+}
 
 my @fq;
 my ($len1, $len2);
@@ -30,36 +60,27 @@ my $all     = 0;
 my $success = 0;
 my $slip    = 0;
 
-if (defined($ARGV[0]) && $ARGV[0] eq "-h") {
-	die "polya_trim.pl [min_len] [trim polyA] [trim polyG] [trim N bases from 5'] [trim Indices] < [input] > [output]
-";
-}
-
-my $len_min   = 77;
-   $len_min   = $ARGV[0] if defined($ARGV[0]);
-my $trimpolyG = 1;
-   $trimpolyG = $ARGV[1] if defined($ARGV[1]);
-my $trimpolyA = 1;
-   $trimpolyA = $ARGV[2] if defined($ARGV[2]);
-my $trim5     = 0;
-   $trim5     = $ARGV[3] if defined($ARGV[3]);
-my $trimi     = 1;
-   $trimi     = $ARGV[4] if defined($ARGV[4]);
+my $len_min   = defined $opt_L ? $opt_L : 77;
+my $trimpolyA = defined $opt_A ? $opt_A : 1;
+my $trimpolyG = defined $opt_G ? $opt_G : 1;
+my $trim5     = defined $opt_5 ? $opt_5 : 0;
+my $trimI     = defined $opt_I;
 
 my @header;
 my ($n1, $n2);
 my ($poly1, $poly2);
 
-while (!eof(STDIN)) {
-	$all++;
+while (1) {
 	$fq[$_] = <STDIN> foreach (0..3);
+	last if !defined $fq[3];
+	$all++;
 	chomp($fq[0], $fq[1]);
 	$len1 = length($fq[1]);
 	if ($len1 < $len_min) {
-		$short{'start'}++;
+		$short{'too short input'}++;
 		next;
 	}
-	if ($trimi) {
+	if ($trimI) {
 		@header = split(/\s+|\:|\+/, $fq[0]);
 		$n1 = () = $header[10] =~ /N/g;
 		$n2 = () = $header[11] =~ /N/g;
@@ -101,12 +122,14 @@ while (!eof(STDIN)) {
 	print @fq;
 }
 
-printf STDERR "Total: %d\nSuccess: %d (%s%%)\npolyN's:\n", $all, $success, $success*100/$all;
+die "No input provided\n" if !$all;
+
+printf STDERR "Total: %d\nSuccess: %d (%s%%)\nDiscarded reads:\n", $all, $success, $success*100/$all;
 
 for my $base (keys %short) {
-	printf STDERR "%s: %d\n", $base, $short{$base};
+	printf STDERR "  %s: %d\n", $base, $short{$base};
 }
 
-if ($trimi) {
-	printf STDERR "N's left: %d\nN's right: %d\nPolyN left: %d\nPolyN right: %d\nSlippery: %d", $ns1, $ns2, $polys1, $polys2, $slip;
+if ($trimI) {
+	printf STDERR "  N's left: %d\nN's right: %d\nPolyN left: %d\nPolyN right: %d\nSlippery: %d", $ns1, $ns2, $polys1, $polys2, $slip;
 }

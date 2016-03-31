@@ -18,12 +18,11 @@
 use strict;
 use warnings;
 use File::Basename;
+use Getopt::Std;
+$Getopt::Std::STANDARD_HELP_VERSION = 1;
 
-my $verion = "0.1";
-
-if ($#ARGV < 3 || grep(/^-*(h(elp)?|v(ersion)?)$/i, @ARGV)) {
-	print STDERR "process_tags.pl version $verion
-Use as:
+my $version = "process_tags.pl v. 0.2\n";
+my $help    = "Use as:
   process_tags.pl [arguments] <reads.fq(.gz)> <specimens.txt>
 
   Input files:
@@ -32,97 +31,59 @@ Use as:
        specimens.txt : a list of specimen names with associated P5 and P7 index sequences
 
   Arguments:
-       -m : Matching length [10]
-       -i : Index read length [8]
+       -m : Matching length                                                       [default: 10]
+       -i : Index read length                                                     [8]
        -x : allowed mismatches when comparing mDBRs for PCR-duplication detection [1]
-       -y : allowed mismatches when matching P7 index [1]
-       -t : Trim this number of bases from the beginning of every sequence [2]
-       -z : gZip output files (y/n) [y]
-       -d : Dry run (no output) (y/n) [n]
-       -o : Output folder [.]
-       -f : use only this Fraction of the reads [all]
+       -y : allowed mismatches when matching P7 index                             [1]
+       -t : Trim this number of bases from the beginning of every sequence        [2]
+       -Z : don't gZip output files (flag)
+       -d : Dry run (no output) (flag)
+       -o : Output folder                                                         [.]
+       -f : use only this Fraction of the reads                                   [1]
 ";
-	exit();
+
+our($opt_m, $opt_i, $opt_x, $opt_y, $opt_t, $opt_o, $opt_f, $opt_Z, $opt_d, $opt_h, $opt_v);
+my $list   = pop;
+my $fqfile = pop;
+die $help    if !defined $list || !defined $fqfile || !getopts('m:i:x:y:t:o:f:Zdhv') || $opt_h;
+die $version if $opt_v;
+
+sub VERSION_MESSAGE {
+	my ($fp) = @_;
+	print { $fp } $version;
 }
 
-my $list  = pop;
-my $fqfile = pop;
+sub HELP_MESSAGE {
+	my ($fp) = @_;
+	print { $fp } $help;
+}
 
 -f $list   || die "'$list' file not found\n";
 -f $fqfile || die "'$fqfile' file not found\n";
 
-my %args = @ARGV;
+## defaults
 
-my $m    = 10;
-my $x    = 1;
-my $y    = 1;
-my $t    = 2;
-my $i_l  = 8;
-my $gz   = 'y';
-my $dry  = 'n';
-my $frac = 1;
-my $o    = ".";
+$opt_m    = 10  if !defined $opt_m;
+$opt_x    = 1   if !defined $opt_x;
+$opt_y    = 1   if !defined $opt_y;
+$opt_t    = 2   if !defined $opt_t;
+$opt_i    = 8   if !defined $opt_i;
+$opt_f    = 1   if !defined $opt_f;
+$opt_o    = "." if !defined $opt_o;
 
-## START ARGS ##
+## check input values
 
-if (defined $args{-m}) {
-	$m = $args{-m};
-	delete($args{-m});
-}
-if (defined $args{-x}) {
-	$x = $args{-x};
-	delete($args{-x});
-}
-if (defined $args{-y}) {
-	$y = $args{-y};
-	delete($args{-y});
-}
-if (defined $args{-t}) {
-	$t = $args{-t};
-	delete($args{-t});
-}
-if (defined $args{-i}) {
-	$i_l = $args{-i};
-	delete($args{-i});
-}
-if (defined $args{-z}) {
-	$gz = $args{-z};
-	delete($args{-z});
-}
-if (defined $args{-d}) {
-	$dry = $args{-d};
-	delete($args{-d});
-}
-if (defined $args{-o}) {
-	$o = $args{-o};
-	delete($args{-o});
-}
-if (defined $args{-f}) {
-	$frac = $args{-f};
-	delete($args{-f});
-}
+die "-m must be a postive integer\n" if $opt_m =~ /\D/;
+die "-x must be a postive integer\n" if $opt_x =~ /\D/;
+die "-y must be a postive integer\n" if $opt_y =~ /\D/;
+die "-t must be a postive integer\n" if $opt_t =~ /\D/;
+die "-i must be a postive integer\n" if $opt_i =~ /\D/;
+die "-f must be a float number (0;1]\n" if $opt_f <= 0 || $opt_f > 1;
+die "Failed to create the output folder: $!\n" if ! -d $opt_o && !mkdir($opt_o);
 
-foreach my $key (keys %args) {
-	die "$key: unknown parameter\n";
-}
-
-die "-m must be a postive integer\n" if $m =~ /\D/;
-die "-x must be a postive integer\n" if $x =~ /\D/;
-die "-y must be a postive integer\n" if $y =~ /\D/;
-die "-t must be a postive integer\n" if $t =~ /\D/;
-die "-i must be a postive integer\n" if $i_l =~ /\D/;
-die "-f must be a float number (0;1]\n" if $frac <= 0 || $frac > 1;
-die "Invalid choice '$gz' for -z\n"  if $gz  ne 'y' && $gz  ne 'n';
-die "Invalid choice '$dry' for -d\n" if $dry ne 'y' && $dry ne 'n';
-die "Failed to create the output folder: $!\n" if ! -d $o && !mkdir($o);
-
-print STDERR "The script was launched with -i $i_l -m $m -x $x -y $y -t $t -z $gz -d $dry -o '$o' -f $frac\n";
-
-## END ARGS ##
-
-my $wet_run = $dry eq 'n';
-my $m2 = $m * 2;
-my $m3 = $m * 3;
+my $wet_run = !defined $opt_d;
+my $m2 = $opt_m * 2;
+my $m3 = $opt_m * 3;
 my (%loci, %combs);
 
 my $start_time = time();
@@ -137,10 +98,10 @@ my %i5s_rescue_bas;
 my %i5s_rescue_pos;
 my @atgc = ("A","T","G","C");
 
-
 open(LIST, "<", $list) || die "$!\n";
 my $s = 0;
 
+# read info about the specimens
 while (<LIST>) {
 	chomp;
 	next if m/^\s*$/;
@@ -151,8 +112,8 @@ while (<LIST>) {
 	my $i5raw = uc($line[2]);
 	die "i7 index '$i7' has incorrect format\n"    if $i7    !~ /^[ATGC]+$/;
 	die "i5 index '$i5raw' has incorrect format\n" if $i5raw !~ /^[ACGTMRWSYKVHDBN]+$/;
-	die "i7 index must be exactly $i_l bases\n"       if length($i7)    != $i_l;
-	die "i5 index must be exactly $i_l bases\n"       if length($i5raw) != $i_l;
+	die "i7 index must be exactly $opt_i bases\n"  if length($i7)    != $opt_i;
+	die "i5 index must be exactly $opt_i bases\n"  if length($i5raw) != $opt_i;
 	my $i5 = prepare_dbr($i5raw);
 	for (my $j = 0; $j < length($line[2]); $j++) {
 		next if substr($i5raw, $j, 1) eq "N";
@@ -168,11 +129,13 @@ while (<LIST>) {
 	push(@specimens, $line[0]);
 	$combs{$i7}{$i5} = $s++;
 }
-close(LIST);
+close LIST;
+die "No info could be found in the specimens file\n" if !@specimens;
 
-my $basename = basename($fqfile);
-$basename =~ s/(\.f(ast)?q)?(\.gz)?$//;
+# open output files if needed
 if ($wet_run) {
+	my $basename = basename($fqfile);
+	$basename =~ s/(\.f(ast)?q)?(\.gz)?$//;
 	push(@fps, openout("$basename.noi7.fq"));
 	push(@fps, openout("$basename.noi5.fq"));
 	foreach my $specimen (@specimens) {
@@ -194,17 +157,19 @@ my $mask;
 my $i5pos;
 my @i5bas;
 my @header;
-my $i5start = -1-$i_l;
+my $i5start = -1-$opt_i;
 my $f2;
 
-while (!eof($fqp)) {
+# iterate over the fastq records
+while (1) {
 	$fq[$_] = <$fqp> foreach (0..3);
-	next if $frac < 1 && rand > $frac;
+	last if !defined($fq[3]);
+	next if $opt_f < 1 && rand > $opt_f;
 	report_time() if ++$c_total % 1000000 == 0;
 	@header = split(/ |:/, $fq[0]);
 	die "Indices couldn't be identified on line ".($.-3).":\n$fq[0]\n" if $#header < 10;
-	$i7 = substr($header[10],        0, $i_l);
-	$i5 = substr($header[10], $i5start, $i_l);
+	$i7 = substr($header[10],        0, $opt_i);
+	$i5 = substr($header[10], $i5start, $opt_i);
 	($f, $i5r) = detect_indices($i7, $i5);
 	$f2 = $f + 2;
 	$c_all[$f2]++;
@@ -212,10 +177,10 @@ while (!eof($fqp)) {
 		$c_duplic[$f2]++;
 		next;
 	}
-	if ($t) {
+	if ($opt_t) {
 		chomp($fq[1], $fq[3]);
-		$fq[1] = substr($fq[1], $t)."\n";
-		$fq[3] = substr($fq[3], $t)."\n";
+		$fq[1] = substr($fq[1], $opt_t)."\n";
+		$fq[3] = substr($fq[3], $opt_t)."\n";
 	}
 	print { $fps[$f2] } @fq if $wet_run;
 }
@@ -230,8 +195,7 @@ my $time = time() - $start_time;
 if ($time < 3600) { printf STDERR "%d sec\n", $time;      }
 else              { printf STDERR "%d min\n", $time / 60; }
 
-## print out the summaries ##
-
+# print out the summaries
 printf STDERR "Total number of input reads: %d\nAmong them: %d i7 orphans, %d i5 orphans\n",
 	$c_total, $c_all[0], $c_all[1];
 
@@ -249,6 +213,7 @@ sub report_time {
 	printf STDERR "Read #%d, %d sec, %d reads/sec\n", $c_total, $time, $c_total / $time if $time > 0;
 }
 
+# convert IUPAC-coded mDBR string into a regex pattern
 sub prepare_dbr {
 	my $pattern = shift;
 	$pattern =~ s/R/[AG]/g;
@@ -265,6 +230,8 @@ sub prepare_dbr {
 	return $pattern;
 }
 
+# return a list of non-degenerate bases corresponding to
+# the input IUPAC code
 sub degenerate_base {
 	my $b = shift;
 	return ("A")         if $b eq "A";
@@ -286,11 +253,12 @@ sub degenerate_base {
 
 my ($len, $mylen);
 
+# recognized indices from the expected set
 sub detect_indices {
 	$i7  = shift;
 	$i5  = shift;
 	$i7m = 0;
-	$len = $y;
+	$len = $opt_y;
 	foreach $i (@i7s) {
 		$mask = $i7 ^ $i;
 		$mask =~ tr/\0//d;
@@ -323,17 +291,17 @@ my ($subseq0, $subseq1, $subseq2);
 my ($b0, $b1, $b2, $h0, $h1);
 my $pos;
 
-## detect if this is a duplicate ##
+# detect if this is a duplicate
 sub is_duplicate {
 	my $f   = shift;
 	return 0 if $f < 0;
 	my $seq = shift;
 	my $i5  = shift;
-	my $subseq1 = substr($seq, 0,  $m);
-	my $subseq2 = substr($seq, $m, $m);
+	my $subseq1 = substr($seq, 0,      $opt_m);
+	my $subseq2 = substr($seq, $opt_m, $opt_m);
 	my $frag = $pieces12[$f]{$subseq1}{$subseq2};
 	if (!defined($frag)) {
-		my $subseq3 = substr($seq, $m2, $m);
+		my $subseq3 = substr($seq, $m2, $opt_m);
 		$frag = $pieces13[$f]{$subseq1}{$subseq3};
 		if (!defined($frag)) {
 			$frag = $pieces23[$f]{$subseq2}{$subseq3};
@@ -348,14 +316,14 @@ sub is_duplicate {
 	if ($uniq[$f][$frag]{$i5}++) {
 		return 1;
 	}
-	elsif (!$x) {
+	elsif (!$opt_x) {
 		return 0;
 	}
 	foreach my $dbr (keys %{$uniq[$f][$frag]}) {
 		next if $i5 eq $dbr;
 		my $mask = $i5 ^ $dbr;
 		$mask =~ tr/\0//d;
-		if (length($mask) <= $x) {
+		if (length($mask) <= $opt_x) {
 			++$uniq[$f][$frag]{$dbr};
 			return 1;
 		}
@@ -363,6 +331,7 @@ sub is_duplicate {
 	return 0;
 }
 
+# open (optionally gzipped) input file
 sub openin {
 	my $fname = shift;
 	my $pipe = ($fname =~ /\.gz$/ ? "gzip -cd $fname |" : "< $fname");
@@ -370,10 +339,11 @@ sub openin {
 	return $fp;
 }
 
+# open (optionally gzipped) output file
 sub openout {
 	my $fname = shift;
-	$fname    = "$o/$fname" if $o ne '.';
-	my $pipe = ($gz eq 'y' ? "| gzip -c > $fname.gz" : "> $fname");
+	$fname    = "$opt_o/$fname" if $opt_o ne '.';
+	my $pipe = defined $opt_Z ? "> $fname" : "| gzip -c > $fname.gz";
 	open my $fp, $pipe or die "$!\n";
 	return $fp;
 }
