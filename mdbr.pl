@@ -25,7 +25,6 @@ if ($#ARGV != 2) {
 my $len  = shift @ARGV;
 my $thre = shift @ARGV;
 
-
 if ($len eq 'own') {
 	@dbrs = uniq(@ARGV);
 }
