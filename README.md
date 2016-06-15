@@ -1,32 +1,63 @@
 Tag-Seq tools
 =============
 
-Included in this project are tools for Tag-Seq index design and data processing.
+Included in this project are tools for Tag-Seq index design and data processing. The scripts `demultiplex_tags.pl` and `deduplicate_tags.pl` work in couple to allow demultiplexing and deduplication of Tag-Seq reads labelled with (moderately) degenerate barcode regions (mDBRs). See below on how to parallelize the processing of the data.
 
-process_tags.pl
----------------
+demultiplex_tags.pl
+-------------------
 
-A tools for demultiplexing Tag-Seq reads tagged with mDBRs.
+A tool for demultiplexing Tag-Seq data from a sequencing run.
 
-Use as: `process_tags.pl [arguments] <reads.fq(.gz)> <specimens.txt>`
+Use as: `demultiplex_tags.pl [arguments] <reads.fq(.gz)> <specimens.tsv>`
 
 Input files:
 
-* `reads.fq(.gz)`: the fastq file with the sequences (optionally gzipped)
-* `specimens.txt`: a list of specimen names with associated P5 and P7 index sequences
+* `reads.fq(.gz)`: fastq file (optionally gzipped)
+* `specimens.tsv`: a list of specimen names with associated P5 and P7 index sequences
+- it is expected to be a tab-separated file with at least three columns: name, i7\_seq and i5\_seq (in any order, headers must be specified on the first line)
 
 Arguments:
 
-* `-m`: Matching length [defaults to 10]
-* `-i`: Index read length [8]
-* `-x`: allowed mismatches when comparing mDBRs for PCR-duplication detection [1]
+* `-i`: Index read length [defaults to 8]
 * `-y`: allowed mismatches when matching P7 index [1]
-* `-t`: Trim this number of bases from the beginning of every sequence [2]
-* `-z`: gZip output files (y/n) [y]
-* `-d`: Dry run (no output) (y/n) [n]
 * `-o`: Output folder [.]
-* `-f`: use only this Fraction of the reads [all]
+* `-Z`: don't gZip output files (switch)
+* `-d`: Dry run (no output) (switch)
 
+deduplicate_tags.pl
+-------------------
+
+A tool for deduplicating Tag-Seq reads from an individual demultiplexed library.
+
+Use as: `deduplicate_tags.pl [arguments] <reads.fq(.gz)>`
+
+Input files:
+
+* `reads.fq(.gz)`: fastq file corresponding to data from one sample (optionally gzipped)
+
+Arguments:
+
+* `m`: Matching length [defaults to 10]
+* `i`: Index read length [8]
+* `x`: allowed mismatches when comparing mDBRs for PCR-duplication detection [1]
+* `t`: Trim this number of bases from the beginning of every sequence [2]
+* `o`: Output file [- (STDOUT)]
+* `f`: use only this Fraction of the reads [1]
+* `d`: Dry run (no output) (switch)
+
+Parallelizing read processing
+-----------------------------
+
+The first step, demultiplexing, is parallelizable only if more than one fastq file is to be demultiplexed. The second step, deduplication, is easily run on multiple processes with each process working on one individual library:
+
+    ncpus=18 # number of CPUs to be used
+    mkdir -p demult dedup
+    demultiplex_tags.pl -o demult reads.fq.gz specimens.tsv
+    for demult in demult/*.fq.gz; do
+        while [ $(jobs | wc -l) -ge "$ncpus" ]; do sleep 1; done
+        lib=$(basename "$demult")
+        deduplicate_tags.pl -t2 -o "dedup/$lib" "$demult"
+    done
 
 mdbr.pl
 -------
@@ -41,7 +72,7 @@ Arguments:
 
 * `DBR length`: length of the coding part of the indices
 * `difference threshold`: min number of differing positions required for a pair of mDBRs to be considered as compatible
-* `alphabet`: currently supported alphabets are `RY` or `ATGC`
+* `alphabet`: currently supported alphabets are `RY` and `ATGC`
 
 Example:
 
@@ -71,7 +102,7 @@ Arguments:
 * `L`: minimum read Length before or after trimming [default: 77]
 * `A`: trim polyA-tails of at least this length     [1]
 * `G`: trim polyG-tails of at least this length     [1]
-* `5`: trim this Number of bases from 5' end        [0]
+* `5`: trim this Number of bases from 5' end* ` [0]
 * `I`: discard reads with polyN and 'slipped' indexes (flag)
 
 Example:
@@ -81,4 +112,4 @@ Example:
 Citation
 --------
 
-* Rozenberg A, Leese F, Weiss LC, Tollrian R (2016). *Biotechniques*, accepted
+* Rozenberg A, Leese F, Weiss LC, Tollrian R (2016). *BioTechniques* 61, in print
