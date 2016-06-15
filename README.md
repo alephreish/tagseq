@@ -48,16 +48,17 @@ Arguments:
 Parallelizing read processing
 -----------------------------
 
-The first step, demultiplexing, is parallelizable only if more than one fastq file is to be demultiplexed. The second step, deduplication, is easily run on multiple processes with each process working on one individual library:
+The first step, demultiplexing, is parallelizable only if more than one fastq file is to be demultiplexed. The second step, deduplication, is easily run as multiple processes or jobs with each job working on one individual library. E.g.:
 
-    ncpus=18 # number of CPUs to be used
+    ncpus=18
     mkdir -p demult dedup
     demultiplex_tags.pl -o demult reads.fq.gz specimens.tsv
     for demult in demult/*.fq.gz; do
         while [ $(jobs | wc -l) -ge "$ncpus" ]; do sleep 1; done
         lib=$(basename "$demult")
-        deduplicate_tags.pl -t2 -o "dedup/$lib" "$demult"
+        deduplicate_tags.pl -t2 -o "dedup/$lib" "$demult" &
     done
+    wait
 
 mdbr.pl
 -------
